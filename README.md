@@ -7,6 +7,7 @@ footprint, necessitating DIP-8 (or smaller) MCU package.  Existing
 libraries all needed a lot of space.
 
 ## Pinout 
+|PIN  | Desc      |Desc      |PIN  |
 |:---:|:----------|---------:|:---:|
 |1    |RST (NC)   |VCC       |    8|
 |2    |PB4 (NC)   |INT0 (col)|    7|
