@@ -16,20 +16,21 @@
 
 .include "tn85def.inc" 
 
-.equ DO = PORTB0          ; Data Out
-.equ LEDs = 60            ; Number of LEDs
-.equ dsz = 3*LEDs         ; 3 bytes / LED * numLeds
+.SET LEDs=1                 ; Number of LEDs
+.SET dsz=(3*LEDs)           ; 3 bytes / LED * numLeds
+.DEF low=R5                 ; register for low data
+.DEF hi=R6                  ; register for high data
 
 ;data segment for storing to RAM
-.dseg
-.org 0x0060
+.DSEG
+.ORG 0x0060
 
-data: .byte dsz             ; Data Array. 3 bytes / LED 
-dptr: .byte 2               ; pointer to beginning of data
+dptr: .BYTE 2               ; pointer for XREG later
+lddt: .BYTE dsz             ; Data Array. 3 bytes / LED 
 
 ;reset and interrupt vectors - ATTiny25/45/85
-.cseg
-.org 0
+.CSEG
+.ORG 0
 rjmp setup                  ; Reset vector, jump to 'setup'
 rjmp INT0_ISR               ; INT0
 reti                        ; PCINT0
@@ -54,7 +55,7 @@ INT0_ISR:
   ;
   ;*********************************************************************
   
-  inc r1                    ; flag 
+  ;inc r1                    ; flag 
   reti                      ; return from interrupt
  
 setup:                      
@@ -65,27 +66,52 @@ setup:
   ;     r16 -- general purpose for setting data
   ;
   ;*********************************************************************
+
+  ; Stack Pointer setup
   ldi r16, low(RAMEND)      ; Set stack pointer to start at
   out SPL, r16              ; RAMEND.  
   ldi r16, high(RAMEND)     ; Don't forget SP counts backwards 
   out SPH, r16              ; ($FF -> $FE -> $FD, etc.)
 
-  ldi XL, low(data)         ;
-  ldi XH, high(data)        ; Set XREG to start location of the 
-  sts dptr, XL              ; data buffer (LED Color Array) and set the 
-  sts dptr, XH              ; read/write pointer to the beginning
+  ; XREG / Data setup
+  ldi XL, low(lddt)         ; Set XREG to start location of DATA
+  ldi XH, high(lddt)        ; Array.
+  sts dptr, XL              ; Set a pointer to the beginning, for use   
+  sts dptr+1, XH            ; later on                            
 
+  ; Input and output pins - PORTB
   sbi DDRB, DDB0            ; PB0 to output
   sbi PORTB,PB2             ; PB2 to inbput_pullup
+  sbi PORTB,PB1             ; PB1 pulse to trigger logic
+  cbi PORTB,PB1             ; And back down        
   
+  ; Set up external interrupts
   ldi r16,0x03              ; 0x03 = INT0 trg on fall (TBL 9.2)
   out MCUCR, r16            ; set MCU Control Register
-
   ldi r16,0x40              ; 0x40 = INT0 enable
   out GIMSK, r16            ; set Int Mask Register
+
+  ; Set up "hi" and "low" port variable
+  ldi r16,0x04              ; PORTB low value 
+  mov low, r16              ; move to 'low' variable
+  inc r16                   ; increment r16
+  mov hi, r16               ; copy to 'hi' variable
   
   clr r16                   ; clear R16
   inc r1                    ; set r1 = 1 ... should give us white light
+
+  ;hardcode some output data
+  ;ldi r17, dsz              ; temporarily set r17 to datasize
+  ;mov r2,r17                ; copy r17 into r2 
+  ;ldi r17, 0xAA             ; green = 255
+  ;ldi r18, 0x00             ; red = 255
+  ;ldi r19, 0xFF             ; blue = 255
+;updlp:
+  ;st X+, r17                ; store r17 (green byte), increment X
+  ;st X+, r18                ; store r18 (red byte), increment X
+  ;st X+, r19                ; store r19 (blue byte), increment X
+  ;dec r2                    ; decrement counter
+  ;brne updlp                ; if nonzero, keep inserting
 
   sei                       ; enable interrupts
 
@@ -97,14 +123,20 @@ loop:
   ;     r1 -- display change flag
   ;
   ;*********************************************************************
-  tst r1                    ; test r1 = 0
-  brne upd_display          ; if not, goto update display
-  tst r16                   ; test r16 = 0
-  brne dis                  ; if nonzero, just display
-  rcall upd_rainbow         ; else update the rainbow first
+
+  ;commenting this stuff out to just see if things run.
+  tst r1                     ; test r1 = 0
+  brne udis                 ; if not, goto update display
+  ;tst r16                   ; test r16 = 0
+  ;brne dis                  ; if nonzero, just display
+  ;rcall upd_rainbow         ; else update the rainbow first
 dis:
   rcall display             ; output display data
+  rcall reset_delay         ; reset_delay for the LEDs
   rjmp loop                 ; and back to the loop
+udis:
+  rcall upd_display         ; update the display color
+  rjmp dis                  ; and display
   
 
 upd_display:
@@ -136,8 +168,8 @@ rainbow:
   rjmp upd_cmp              ; to complete teh update
 
 white:
-  ldi r17, 0xff             ; green = 255
-  ldi r18, 0xff             ; red = 255
+  ldi r17, 0x00             ; green = 0
+  ldi r18, 0xaa             ; red = 0  
   ldi r19, 0xff             ; blue = 255
   inc r16                   ; r16 =1 (for next cycle)
   rjmp upd_cmp              ; to complete teh update
@@ -150,8 +182,8 @@ red:
   rjmp upd_cmp              ; to complete teh update
 
 blue:
-  ldi r17, 0x00             ; green = 0
-  ldi r18, 0x00             ; red = 0  
+  ldi r17, 0xff             ; green = 0
+  ldi r18, 0xff             ; red = 0  
   ldi r19, 0xff             ; blue = 255
   inc r16                   ; r16 =1 (for next cycle)
 
@@ -163,10 +195,8 @@ updlp:
   st X+, r18                ; store r18 (red byte), increment X
   st X+, r19                ; store r19 (blue byte), increment X
   dec r2                    ; decrement counter
-  tst r2                    ; test if counter expired
   brne updlp                ; back to updateloop
   ret                       ; or return from subroutine
-  
 
 display:
   ;*********************************************************************
@@ -175,8 +205,8 @@ display:
   ;   Registers used:
   ;
   ;     r2 - Output byte register
-  ;     r25 - byte counter
-  ;     r24 - bit counter
+  ;     r24 - byte counter
+  ;     r23 - bit counter
   ;
   ;  ctXX = clock tick something (e.g. CT00
   ;
@@ -184,39 +214,48 @@ display:
 
   lds XL, dptr              ; set XREG to start address of data         
   lds XH, dptr+1            ; array.  
-  ldi r24, 7                ; 7 bits to send (loop 7 times)
-  ldi r25, dsz              ; r25 to data size
+  ldi r24, dsz              ; r25 to data size
+st:
+  ldi r23, 7                ; 7 bits to send (loop 7 times)
   ld r2, X+                 ; load r2 with first byte in data
 ct06: nop                   ; clocktick6, no op
 ct07: nop                   ; clocktick7, no op
-  cbi PORTB, 1              ; force pb0 low (clear bit 1)
+  out PORTB, low            ; force pb0 low (clear bit 1)
 ct09: lsl r2                ; tick 9 shift bit
-s00: sbi PORTB, 1           ; tick0 pb0 high
+s00: out PORTB, hi          ; tick0 pb0 high
   brcs ct03                 ; if carry set, jump to clock3
-  sbi PORTB, 1              ; else shut off pb0 (2 ticks = logic 0)
-ct03: dec r24               ; subtract a bit
+  out PORTB, low            ; else shut off pb0 (2 ticks = logic 0)
+ct03: dec r23               ; subtract a bit
   brne ct06                 ; if bits >0, jump to clock6
   lsl r2                    ; else shift last bit
   brcc bit8                 ; jump to bit8 processing if bit8=0
-  ldi r24,7                 ; otherwise reset counter to 7
-  cbi PORTB, 1              ; portb down (7 ticks = logic high)
+  ldi r23,7                 ; otherwise reset counter to 7
+  out PORTB, low            ; portb down (7 ticks = logic high)
   nop
-  sbi PORTB, 1              ; portb up
-  dec r25                   ; decrement bytes
+  out PORTB, hi             ; portb up
+  sbiw r24, 1               ; decrement bytes
   ld r2, X+                 ; and load next byte
   brne ct07                 ; bytes >0, back to clock7
   rjmp disend               ; else finish up
-bit8: cbi PORTB, 1          ; bit8 was 0, bit7 data low
-  ldi r24, 7                ; reset bit counter
-  sbi PORTB, 1              ; data high
+bit8: out PORTB, low        ; bit8 was 0, bit7 data low
+  ldi r23, 7                ; reset bit counter
+  out PORTB, hi             ; data high
   nop
-  cbi PORTB, 1              ; data low (2 clocks = logical 0)
-  dec r25                   ; decrement bytes
+  out PORTB, low            ; data low (2 clocks = logical 0)
+  sbiw r24,1                ; decrement bytes
   ld r2, X+                 ; and load next byte
   brne ct09                 ; if byteAvail, goto clocktick9
-disend: cbi PORTB, 1        ; else, shutdown
+disend: out PORTB, low      ; else, shutdown
   ret                       ; and return
 
 upd_rainbow:
   ;do nothing for now - just wanna compile
+  ret
+
+reset_delay:
+  ldi r22, 160  
+rst_lp:
+  dec r22
+  tst r22
+  brne rst_lp
   ret
