@@ -16,7 +16,7 @@
 
 .include "tn85def.inc" 
 
-.SET LEDs=1                 ; Number of LEDs
+.SET LEDs=2                 ; Number of LEDs
 .SET dsz=(3*LEDs)           ; 3 bytes / LED * numLeds
 .DEF low=R5                 ; register for low data
 .DEF hi=R6                  ; register for high data
@@ -123,8 +123,6 @@ loop:
   ;     r1 -- display change flag
   ;
   ;*********************************************************************
-
-  ;commenting this stuff out to just see if things run.
   tst r1                     ; test r1 = 0
   brne udis                 ; if not, goto update display
   ;tst r16                   ; test r16 = 0
@@ -146,6 +144,8 @@ upd_display:
   ;   Registers used:
   ;     r1 -- display change flag
   ;     r16 -- display state flag (solid white, red, blue, rainbow)
+  ;            use R16 because we can use immediate compares, saving
+  ;            an instruction.
   ;     r17:19 -- Green, Red, Blue values for solid colors
   ;
   ;*********************************************************************
@@ -153,11 +153,11 @@ upd_display:
   ldi r17, dsz              ; temporarily set r17 to datasize
   mov r2,r17                ; copy r17 into r2 
   cpi r16, 0x00             ; if r16 = 0, white
-  rjmp  white               ;
+  breq white                ;
   cpi r16, 0x01             ; if r16 = 1, red
-  rjmp red                  ;
+  breq red                  ;
   cpi r16, 0x02             ; if r16 = 2, blue
-  rjmp blue                 ;
+  breq blue                 ;
                             ; else, rainbow
 
 rainbow:
@@ -168,8 +168,8 @@ rainbow:
   rjmp upd_cmp              ; to complete teh update
 
 white:
-  ldi r17, 0x00             ; green = 0
-  ldi r18, 0xaa             ; red = 0  
+  ldi r17, 0xff             ; green = 0
+  ldi r18, 0xff             ; red = 0  
   ldi r19, 0xff             ; blue = 255
   inc r16                   ; r16 =1 (for next cycle)
   rjmp upd_cmp              ; to complete teh update
@@ -182,8 +182,8 @@ red:
   rjmp upd_cmp              ; to complete teh update
 
 blue:
-  ldi r17, 0xff             ; green = 0
-  ldi r18, 0xff             ; red = 0  
+  ldi r17, 0x00             ; green = 0
+  ldi r18, 0x00             ; red = 0  
   ldi r19, 0xff             ; blue = 255
   inc r16                   ; r16 =1 (for next cycle)
 
@@ -211,7 +211,6 @@ display:
   ;  ctXX = clock tick something (e.g. CT00
   ;
   ;*********************************************************************
-
   lds XL, dptr              ; set XREG to start address of data         
   lds XH, dptr+1            ; array.  
   ldi r24, dsz              ; r25 to data size
@@ -258,4 +257,6 @@ rst_lp:
   dec r22
   tst r22
   brne rst_lp
+  ; for giggles, cycle through things
+  inc r1
   ret
