@@ -44,7 +44,7 @@ rjmp setup                  ; Reset vector, jump to 'setup'
 rjmp INT0_ISR               ; INT0
 reti                        ; PCINT0
 reti                        ; TIM1_CMPA
-reti                        ; TIM1_OVF
+rjmp T1_OVF_ISR             ; TIM1_OVF
 reti                        ; TIM0_OVF
 reti                        ; EE_RDY
 reti                        ; ANA_COMP
@@ -63,8 +63,42 @@ INT0_ISR:
   ;     r1 -- flag for changing memory map on next run
   ;
   ;*********************************************************************
+  push r16                  ; r16 to stack
+  in r16, SREG              ; SREG to r16
+  push r16                  ; r16 (SREG) to stack
+  in r16, GIMSK             ; load int. mask reg into r16
+  andi r16, ~(1<<INT0)      ; disable INT0 pin
+  out GIMSK, r16            ; save to register
   
-  ;inc r1                    ; flag 
+  ; enable a 1 ms 1-shot debounce timer
+  ldi r16, (1<<CS12)|(1<<CS11)
+  out TCCR1, r16
+  
+  inc r1                    ; increment flag
+  pop r16                   ; restore r16 (SREG)
+  out SREG, r16             ; restore r16 to SREG
+  pop r16                   ; restore r16
+  reti                      ; return from interrupt
+
+T1_OVF_ISR: 
+  ;*********************************************************************
+  ;   External Pin Interrupt.
+  ;
+  ;   Registers used:
+  ;     r1 -- flag for changing memory map on next run
+  ;
+  ;*********************************************************************
+  push r16                  ; save r16 to stack
+  in r16, SREG              ; SREG to r16
+  push r16                  ; r16 (SREG) to stack
+  in r16, GIMSK             ; load interrupt register to r16
+  ori r16, (1<<INT0)        ; enable INT0 pin
+  out GIMSK, r16            ; save back to GIMSK register
+  clr r16                   ; clear r16
+  out TCCR1, r16            ; stop the clock  
+  pop r16                   ; restore r16 (SREG)
+  out SREG, r16             ; restore r16 to SREG
+  pop r16                   ; restore r16
   reti                      ; return from interrupt
  
 setup:                      
@@ -111,22 +145,16 @@ setup:
   ;set up r4 to be a constant '8' - for use in rainbow
   ldi r16, 0x08
   mov r4, r16
+
+  ;set up timer 1 - CTC, PWM, COM_A off, 1/32 prescalar (~1 kHz freq)
+  ldi r16, (1<<CS12)|(1<<CS11)
+  out TCCR1, r16
+  ;timer1 overflow interrupt enable
+  ldi r16, (1<<TOIE1)
+  out TIMSK, r16
  
   clr r16                   ; clear R16
-  inc r1                    ; set r1 = 1 to trigger display update
-
-  ;hardcode some output data
-  ;ldi r17, dsz              ; temporarily set r17 to datasize
-  ;mov r2,r17                ; copy r17 into r2 
-  ;ldi r17, 0xAA             ; green = 255
-  ;ldi r18, 0x00             ; red = 255
-  ;ldi r19, 0xFF             ; blue = 255
-;updlp:
-  ;st X+, r17                ; store r17 (green byte), increment X
-  ;st X+, r18                ; store r18 (red byte), increment X
-  ;st X+, r19                ; store r19 (blue byte), increment X
-  ;dec r2                    ; decrement counter
-  ;brne updlp                ; if nonzero, keep inserting
+  inc r1                    ; set r1 = 1 to trigger start on rainbow
 
   sei                       ; enable interrupts
 
@@ -165,8 +193,6 @@ upd_display:
   ;
   ;*********************************************************************
   dec r1                    ; decrement r1 back to 0
-  ;ldi r17, dsz              ; temporarily set r17 to datasize
-  ;mov r2,r17                ; copy r17 into r2 
   lds r2, dctr              ; load data counter into r2
   cpi r16, 0x00             ; if r16 = 0, white
   breq white                ;
