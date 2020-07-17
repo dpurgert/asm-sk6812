@@ -16,7 +16,7 @@
 
 .include "tn85def.inc" 
 
-.SET LEDs=2                 ; Number of LEDs
+.SET LEDs=5                 ; Number of LEDs
 .SET dsz=(3*LEDs)           ; 3 bytes / LED * numLeds
 .DEF low=R5                 ; register for low data
 .DEF hi=R6                  ; register for high data
@@ -25,8 +25,8 @@
 ; "dlth_dltl".
 ; This is set on every iteration of the rainbow
 ; testing - 2 LEDS (60 us  + 80us) *10 loops = 1400 us / 1.4 ms 
-.EQU dlth=0x00              ; Delay Timer(16bit). Num cycles to not
-.EQU dltl=0x0A              ; change rainbow color. 0x0100 = 256
+.EQU dlth=0x01              ; Delay Timer(16bit). Num cycles to not
+.EQU dltl=0x00              ; change rainbow color. 0x0100 = 256
 
 
 ;data segment for storing to RAM
@@ -112,8 +112,7 @@ setup:
   ldi r16, 0x08
   mov r4, r16
  
-  ;leaving r16=0x08 SHOULD give us rainbow 
-  ;clr r16                   ; clear R16
+  clr r16                   ; clear R16
   inc r1                    ; set r1 = 1 to trigger display update
 
   ;hardcode some output data

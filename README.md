@@ -21,4 +21,14 @@ Connected Pins / purpose:
 * 8 - VCC
 
 ##Changelog
-
+v 0.1 - Added "rainbow" color transitions.  Actual increments are +/-8
+in the code, resulting in a rough progression as follows:
+|Grn|Red|Blue|
+|---|---|---|
+|0|255|0|
+|0|127|8|
+|0|0|255|
+|8|0|127|
+|255|0|0|
+|127|8|0|
+More work needs to go into the transitions, as well as the timing.
