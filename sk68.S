@@ -26,7 +26,7 @@
 ; This is set on every iteration of the rainbow
 ; testing - 2 LEDS (60 us  + 80us) *10 loops = 1400 us / 1.4 ms 
 .EQU dlth=0x01              ; Delay Timer(16bit). Num cycles to not
-.EQU dltl=0x00              ; change rainbow color. 0x0100 = 256
+.EQU dltl=0x80              ; change rainbow color. 0x0100 = 256
 
 
 ;data segment for storing to RAM
@@ -35,6 +35,7 @@
 
 dctr: .BYTE 1               ; data counter
 dptr: .BYTE 2               ; pointer for XREG later
+enb:  .BYTE 1               ; enable blue LED
 lddt: .BYTE dsz             ; Data Array. 3 bytes / LED 
 
 ;reset and interrupt vectors - ATTiny25/45/85
@@ -70,8 +71,8 @@ INT0_ISR:
   andi r16, ~(1<<INT0)      ; disable INT0 pin
   out GIMSK, r16            ; save to register
   
-  ; enable a 1 ms 1-shot debounce timer
-  ldi r16, (1<<CS12)|(1<<CS11)
+  ; enable a ~128 ms debounce timer     
+  ldi r16, (1<<CS13) | (1<<CS12) | (1<<CS10)         
   out TCCR1, r16
   
   inc r1                    ; increment flag
@@ -96,6 +97,8 @@ T1_OVF_ISR:
   out GIMSK, r16            ; save back to GIMSK register
   clr r16                   ; clear r16
   out TCCR1, r16            ; stop the clock  
+  ldi r16,(1<<INTF0)        ; force clear INT0 flag
+  out GIFR, r16             ; and save to flag register
   pop r16                   ; restore r16 (SREG)
   out SREG, r16             ; restore r16 to SREG
   pop r16                   ; restore r16
@@ -146,8 +149,8 @@ setup:
   ldi r16, 0x08
   mov r4, r16
 
-  ;set up timer 1 - CTC, PWM, COM_A off, 1/32 prescalar (~1 kHz freq)
-  ldi r16, (1<<CS12)|(1<<CS11)
+  ;set up timer 1 - CTC, PWM, COM_A off, 1/128 prescalar (~250 Hz)
+  ldi r16, (1<<CS13)          
   out TCCR1, r16
   ;timer1 overflow interrupt enable
   ldi r16, (1<<TOIE1)
@@ -200,8 +203,23 @@ upd_display:
   breq red                  ;
   cpi r16, 0x02             ; if r16 = 2, blue
   breq blue                 ;
+  cpi r16, 0x03             ; if r16 = 2, blue
+  breq redgreen             ;
                             ; else, rainbow
-
+redgreen:
+  lds YL, enb               ;
+  lds YH, enb+1             ;
+  ld r13, Y                 ; load enable flag to r13
+  tst r13                   ; test if zero (blue disabled)
+  brne disblu               ; blue is enabled, disable it
+  inc r13                   ; blue is disabled, enable it
+  st Y, r13                 ; save to RAM for next pass
+  rjmp rainbow              ; and start the rainbow
+disblu:
+  clr r13                   ; disable blue
+  st Y, r13                 ; save to SRAM, continue to rainbow
+  
+  
 rainbow:
   ldi r17, 0x00             ; green = 0
   ldi r18, 0xff             ; red = 255
@@ -215,6 +233,13 @@ rainbow:
   inc r10                   ; green is incrementing
   inc r12                   ; blue is incrementing
   rjmp upd_cmp              ; to complete teh update
+
+;lred:
+;  ldi r17, 0x00             ; green = 0
+;  ldi r18, 0x08             ; red = 128
+;  ldi r19, 0x00             ; blue = 0
+;  inc r16                   ; r16 =1 (for next cycle)
+;  rjmp upd_cmp              ; to complete teh update
 
 white:
   ldi r17, 0xff             ; green = 0
@@ -339,7 +364,7 @@ chkblu:
   cpi r19, 0xff             ; if we got this far, and blue is 255, 
   breq restblu              ; restart blue
   cpi r18,0xff              ; if we got this far, and red is 255,
-  breq restred              ; restert red
+  breq restred              ; restart red
   cpi r17,0xff              ; if we got this far, and green is 255,
   breq restgrn              ; restart green
 finblu:                     ; otherwise finish out
@@ -377,11 +402,6 @@ blupt:
   brsh finblu               ; r19 > 128, jump to redgrn processing
   inc r7                    ; else enable green changes
   rjmp finblu               ; and get to redgrn processing
-;incblu:
-;  cpi r19,0x80              ; compare current value to 128
-;  brlo finblu               ; r19 < 128, do nothing
-;  inc r8                    ; 128<r19<136, enable red to start changing
-;  rjmp finblu
 
 restred: inc r8             ; force start red
 rainred:
@@ -404,14 +424,15 @@ redpt:
   brne finred               ; r11 nonzero, incrementing
   cpi r18, 0x7F             ; compare current value to 128
   brsh finred               ; r19 > 128, jump to finred processing
+  tst r13                   ; check if blue disabled
+  breq noblu                ; it is, jump to noblue
   inc r9                    ; else enable blue changes 
   rjmp finred               ; and get to finred processing
-;incred:
-;  cpi r18,0x80              ; compare current value to 128
-;  brlo finred               ; r19 < 128, do nothing
-;  inc r7                    ; r19 >= 128, enable green to start 
 finred:
   rjmp chkblu               ; check if we need to process blue
+noblu:
+  inc r7                    ; enable green changes again
+  rjmp finred               ; and back to finish out red
   
 
 restgrn: inc r7             ; force restart green
@@ -437,10 +458,6 @@ grnpt:
   brsh fingrn               ; r19 > 128, jump to redblu processing
   inc r8                    ; else enable red changes   
   rjmp fingrn               ; and get to redblu processing
-;incgrn:
-;  cpi r17,0x80              ; compare current value to 128
-;  brlo fingrn               ; r19 < 128, do nothing
-;  inc r9                    ; r19 >= 128, enable blue to change
 fingrn:
   rjmp chkred               ; check if we're to process red
 

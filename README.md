@@ -21,6 +21,7 @@ Connected Pins / purpose:
 * 8 - VCC
 
 ##Changelog
+v 0.3 - Fixed the timer interrupt to ensure INT0 doesn't fire again.
 v 0.2 - Add interrupt vector to allow changing program.
 v 0.1 - Added "rainbow" color transitions.  Actual increments are +/-8
 in the code, resulting in a rough progression as follows:
