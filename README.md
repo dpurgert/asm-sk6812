@@ -4,7 +4,11 @@ ATTiny driver for SK6812 LEDs (similar to WS2812, etc.).
 
 Project grew out of a need to accommodate an extremely small physical
 footprint, necessitating DIP-8 (or smaller) MCU package.  Existing
-libraries all needed a lot of space.
+libraries all needed a lot of (flash) space.
+
+## Requirements
+ * ATTiny x5 series (25,45,85)
+ * CKDIV disabled (i.e. run at 8 MHz)
 
 ## Pinout 
 |PIN  | Desc      |Desc      |PIN  |
